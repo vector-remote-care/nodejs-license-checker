@@ -3863,8 +3863,6 @@ module.exports = Function.prototype.bind || implementation;
 /***/ 7625:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
-exports.alphasort = alphasort
-exports.alphasorti = alphasorti
 exports.setopts = setopts
 exports.ownProp = ownProp
 exports.makeAbs = makeAbs
@@ -3877,17 +3875,14 @@ function ownProp (obj, field) {
   return Object.prototype.hasOwnProperty.call(obj, field)
 }
 
+var fs = __nccwpck_require__(5747)
 var path = __nccwpck_require__(5622)
 var minimatch = __nccwpck_require__(3973)
 var isAbsolute = __nccwpck_require__(8714)
 var Minimatch = minimatch.Minimatch
 
-function alphasorti (a, b) {
-  return a.toLowerCase().localeCompare(b.toLowerCase())
-}
-
 function alphasort (a, b) {
-  return a.localeCompare(b)
+  return a.localeCompare(b, 'en')
 }
 
 function setupIgnores (self, options) {
@@ -3946,6 +3941,7 @@ function setopts (self, pattern, options) {
   self.stat = !!options.stat
   self.noprocess = !!options.noprocess
   self.absolute = !!options.absolute
+  self.fs = options.fs || fs
 
   self.maxLength = options.maxLength || Infinity
   self.cache = options.cache || Object.create(null)
@@ -3979,6 +3975,8 @@ function setopts (self, pattern, options) {
   // Note that they are not supported in Glob itself anyway.
   options.nonegate = true
   options.nocomment = true
+  // always treat \ in patterns as escapes, not path separators
+  options.allowWindowsEscape = false
 
   self.minimatch = new Minimatch(pattern, options)
   self.options = self.minimatch.options
@@ -4015,7 +4013,7 @@ function finish (self) {
     all = Object.keys(all)
 
   if (!self.nosort)
-    all = all.sort(self.nocase ? alphasorti : alphasort)
+    all = all.sort(alphasort)
 
   // at *some* point we statted all of these
   if (self.mark) {
@@ -4152,7 +4150,6 @@ function childrenIgnored (self, path) {
 
 module.exports = glob
 
-var fs = __nccwpck_require__(5747)
 var rp = __nccwpck_require__(6863)
 var minimatch = __nccwpck_require__(3973)
 var Minimatch = minimatch.Minimatch
@@ -4163,8 +4160,6 @@ var assert = __nccwpck_require__(2357)
 var isAbsolute = __nccwpck_require__(8714)
 var globSync = __nccwpck_require__(9010)
 var common = __nccwpck_require__(7625)
-var alphasort = common.alphasort
-var alphasorti = common.alphasorti
 var setopts = common.setopts
 var ownProp = common.ownProp
 var inflight = __nccwpck_require__(2492)
@@ -4457,7 +4452,10 @@ Glob.prototype._process = function (pattern, index, inGlobStar, cb) {
   var read
   if (prefix === null)
     read = '.'
-  else if (isAbsolute(prefix) || isAbsolute(pattern.join('/'))) {
+  else if (isAbsolute(prefix) ||
+      isAbsolute(pattern.map(function (p) {
+        return typeof p === 'string' ? p : '[*]'
+      }).join('/'))) {
     if (!prefix || !isAbsolute(prefix))
       prefix = '/' + prefix
     read = prefix
@@ -4615,7 +4613,7 @@ Glob.prototype._readdirInGlobStar = function (abs, cb) {
   var lstatcb = inflight(lstatkey, lstatcb_)
 
   if (lstatcb)
-    fs.lstat(abs, lstatcb)
+    self.fs.lstat(abs, lstatcb)
 
   function lstatcb_ (er, lstat) {
     if (er && er.code === 'ENOENT')
@@ -4656,7 +4654,7 @@ Glob.prototype._readdir = function (abs, inGlobStar, cb) {
   }
 
   var self = this
-  fs.readdir(abs, readdirCb(this, abs, cb))
+  self.fs.readdir(abs, readdirCb(this, abs, cb))
 }
 
 function readdirCb (self, abs, cb) {
@@ -4860,13 +4858,13 @@ Glob.prototype._stat = function (f, cb) {
   var self = this
   var statcb = inflight('stat\0' + abs, lstatcb_)
   if (statcb)
-    fs.lstat(abs, statcb)
+    self.fs.lstat(abs, statcb)
 
   function lstatcb_ (er, lstat) {
     if (lstat && lstat.isSymbolicLink()) {
       // If it's a symlink, then treat it as the target, unless
       // the target does not exist, then treat it as a file.
-      return fs.stat(abs, function (er, stat) {
+      return self.fs.stat(abs, function (er, stat) {
         if (er)
           self._stat2(f, abs, null, lstat, cb)
         else
@@ -4910,7 +4908,6 @@ Glob.prototype._stat2 = function (f, abs, er, stat, cb) {
 module.exports = globSync
 globSync.GlobSync = GlobSync
 
-var fs = __nccwpck_require__(5747)
 var rp = __nccwpck_require__(6863)
 var minimatch = __nccwpck_require__(3973)
 var Minimatch = minimatch.Minimatch
@@ -4920,8 +4917,6 @@ var path = __nccwpck_require__(5622)
 var assert = __nccwpck_require__(2357)
 var isAbsolute = __nccwpck_require__(8714)
 var common = __nccwpck_require__(7625)
-var alphasort = common.alphasort
-var alphasorti = common.alphasorti
 var setopts = common.setopts
 var ownProp = common.ownProp
 var childrenIgnored = common.childrenIgnored
@@ -4960,7 +4955,7 @@ function GlobSync (pattern, options) {
 }
 
 GlobSync.prototype._finish = function () {
-  assert(this instanceof GlobSync)
+  assert.ok(this instanceof GlobSync)
   if (this.realpath) {
     var self = this
     this.matches.forEach(function (matchset, index) {
@@ -4984,7 +4979,7 @@ GlobSync.prototype._finish = function () {
 
 
 GlobSync.prototype._process = function (pattern, index, inGlobStar) {
-  assert(this instanceof GlobSync)
+  assert.ok(this instanceof GlobSync)
 
   // Get the first [n] parts of pattern that are all strings.
   var n = 0
@@ -5021,7 +5016,10 @@ GlobSync.prototype._process = function (pattern, index, inGlobStar) {
   var read
   if (prefix === null)
     read = '.'
-  else if (isAbsolute(prefix) || isAbsolute(pattern.join('/'))) {
+  else if (isAbsolute(prefix) ||
+      isAbsolute(pattern.map(function (p) {
+        return typeof p === 'string' ? p : '[*]'
+      }).join('/'))) {
     if (!prefix || !isAbsolute(prefix))
       prefix = '/' + prefix
     read = prefix
@@ -5157,7 +5155,7 @@ GlobSync.prototype._readdirInGlobStar = function (abs) {
   var lstat
   var stat
   try {
-    lstat = fs.lstatSync(abs)
+    lstat = this.fs.lstatSync(abs)
   } catch (er) {
     if (er.code === 'ENOENT') {
       // lstat failed, doesn't exist
@@ -5194,7 +5192,7 @@ GlobSync.prototype._readdir = function (abs, inGlobStar) {
   }
 
   try {
-    return this._readdirEntries(abs, fs.readdirSync(abs))
+    return this._readdirEntries(abs, this.fs.readdirSync(abs))
   } catch (er) {
     this._readdirError(abs, er)
     return null
@@ -5353,7 +5351,7 @@ GlobSync.prototype._stat = function (f) {
   if (!stat) {
     var lstat
     try {
-      lstat = fs.lstatSync(abs)
+      lstat = this.fs.lstatSync(abs)
     } catch (er) {
       if (er && (er.code === 'ENOENT' || er.code === 'ENOTDIR')) {
         this.statCache[abs] = false
@@ -5363,7 +5361,7 @@ GlobSync.prototype._stat = function (f) {
 
     if (lstat && lstat.isSymbolicLink()) {
       try {
-        stat = fs.statSync(abs)
+        stat = this.fs.statSync(abs)
       } catch (er) {
         stat = lstat
       }
@@ -5487,7 +5485,7 @@ if (!fs[gracefulQueue]) {
       return fs$close.call(fs, fd, function (err) {
         // This function uses the graceful-fs shared queue
         if (!err) {
-          retry()
+          resetQueue()
         }
 
         if (typeof cb === 'function')
@@ -5505,7 +5503,7 @@ if (!fs[gracefulQueue]) {
     function closeSync (fd) {
       // This function uses the graceful-fs shared queue
       fs$closeSync.apply(fs, arguments)
-      retry()
+      resetQueue()
     }
 
     Object.defineProperty(closeSync, previousSymbol, {
@@ -5547,14 +5545,13 @@ function patch (fs) {
 
     return go$readFile(path, options, cb)
 
-    function go$readFile (path, options, cb) {
+    function go$readFile (path, options, cb, startTime) {
       return fs$readFile(path, options, function (err) {
         if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-          enqueue([go$readFile, [path, options, cb]])
+          enqueue([go$readFile, [path, options, cb], err, startTime || Date.now(), Date.now()])
         else {
           if (typeof cb === 'function')
             cb.apply(this, arguments)
-          retry()
         }
       })
     }
@@ -5568,14 +5565,13 @@ function patch (fs) {
 
     return go$writeFile(path, data, options, cb)
 
-    function go$writeFile (path, data, options, cb) {
+    function go$writeFile (path, data, options, cb, startTime) {
       return fs$writeFile(path, data, options, function (err) {
         if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-          enqueue([go$writeFile, [path, data, options, cb]])
+          enqueue([go$writeFile, [path, data, options, cb], err, startTime || Date.now(), Date.now()])
         else {
           if (typeof cb === 'function')
             cb.apply(this, arguments)
-          retry()
         }
       })
     }
@@ -5590,14 +5586,13 @@ function patch (fs) {
 
     return go$appendFile(path, data, options, cb)
 
-    function go$appendFile (path, data, options, cb) {
+    function go$appendFile (path, data, options, cb, startTime) {
       return fs$appendFile(path, data, options, function (err) {
         if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-          enqueue([go$appendFile, [path, data, options, cb]])
+          enqueue([go$appendFile, [path, data, options, cb], err, startTime || Date.now(), Date.now()])
         else {
           if (typeof cb === 'function')
             cb.apply(this, arguments)
-          retry()
         }
       })
     }
@@ -5611,47 +5606,60 @@ function patch (fs) {
       cb = flags
       flags = 0
     }
-    return fs$copyFile(src, dest, flags, function (err) {
-      if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-        enqueue([fs$copyFile, [src, dest, flags, cb]])
-      else {
-        if (typeof cb === 'function')
-          cb.apply(this, arguments)
-        retry()
-      }
-    })
+    return go$copyFile(src, dest, flags, cb)
+
+    function go$copyFile (src, dest, flags, cb, startTime) {
+      return fs$copyFile(src, dest, flags, function (err) {
+        if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
+          enqueue([go$copyFile, [src, dest, flags, cb], err, startTime || Date.now(), Date.now()])
+        else {
+          if (typeof cb === 'function')
+            cb.apply(this, arguments)
+        }
+      })
+    }
   }
 
   var fs$readdir = fs.readdir
   fs.readdir = readdir
+  var noReaddirOptionVersions = /^v[0-5]\./
   function readdir (path, options, cb) {
-    var args = [path]
-    if (typeof options !== 'function') {
-      args.push(options)
-    } else {
-      cb = options
-    }
-    args.push(go$readdir$cb)
+    if (typeof options === 'function')
+      cb = options, options = null
 
-    return go$readdir(args)
+    var go$readdir = noReaddirOptionVersions.test(process.version)
+      ? function go$readdir (path, options, cb, startTime) {
+        return fs$readdir(path, fs$readdirCallback(
+          path, options, cb, startTime
+        ))
+      }
+      : function go$readdir (path, options, cb, startTime) {
+        return fs$readdir(path, options, fs$readdirCallback(
+          path, options, cb, startTime
+        ))
+      }
 
-    function go$readdir$cb (err, files) {
-      if (files && files.sort)
-        files.sort()
+    return go$readdir(path, options, cb)
 
-      if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-        enqueue([go$readdir, [args]])
+    function fs$readdirCallback (path, options, cb, startTime) {
+      return function (err, files) {
+        if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
+          enqueue([
+            go$readdir,
+            [path, options, cb],
+            err,
+            startTime || Date.now(),
+            Date.now()
+          ])
+        else {
+          if (files && files.sort)
+            files.sort()
 
-      else {
-        if (typeof cb === 'function')
-          cb.apply(this, arguments)
-        retry()
+          if (typeof cb === 'function')
+            cb.call(this, err, files)
+        }
       }
     }
-  }
-
-  function go$readdir (args) {
-    return fs$readdir.apply(fs, args)
   }
 
   if (process.version.substr(0, 4) === 'v0.8') {
@@ -5776,14 +5784,13 @@ function patch (fs) {
 
     return go$open(path, flags, mode, cb)
 
-    function go$open (path, flags, mode, cb) {
+    function go$open (path, flags, mode, cb, startTime) {
       return fs$open(path, flags, mode, function (err, fd) {
         if (err && (err.code === 'EMFILE' || err.code === 'ENFILE'))
-          enqueue([go$open, [path, flags, mode, cb]])
+          enqueue([go$open, [path, flags, mode, cb], err, startTime || Date.now(), Date.now()])
         else {
           if (typeof cb === 'function')
             cb.apply(this, arguments)
-          retry()
         }
       })
     }
@@ -5795,13 +5802,79 @@ function patch (fs) {
 function enqueue (elem) {
   debug('ENQUEUE', elem[0].name, elem[1])
   fs[gracefulQueue].push(elem)
+  retry()
+}
+
+// keep track of the timeout between retry() calls
+var retryTimer
+
+// reset the startTime and lastTime to now
+// this resets the start of the 60 second overall timeout as well as the
+// delay between attempts so that we'll retry these jobs sooner
+function resetQueue () {
+  var now = Date.now()
+  for (var i = 0; i < fs[gracefulQueue].length; ++i) {
+    // entries that are only a length of 2 are from an older version, don't
+    // bother modifying those since they'll be retried anyway.
+    if (fs[gracefulQueue][i].length > 2) {
+      fs[gracefulQueue][i][3] = now // startTime
+      fs[gracefulQueue][i][4] = now // lastTime
+    }
+  }
+  // call retry to make sure we're actively processing the queue
+  retry()
 }
 
 function retry () {
+  // clear the timer and remove it to help prevent unintended concurrency
+  clearTimeout(retryTimer)
+  retryTimer = undefined
+
+  if (fs[gracefulQueue].length === 0)
+    return
+
   var elem = fs[gracefulQueue].shift()
-  if (elem) {
-    debug('RETRY', elem[0].name, elem[1])
-    elem[0].apply(null, elem[1])
+  var fn = elem[0]
+  var args = elem[1]
+  // these items may be unset if they were added by an older graceful-fs
+  var err = elem[2]
+  var startTime = elem[3]
+  var lastTime = elem[4]
+
+  // if we don't have a startTime we have no way of knowing if we've waited
+  // long enough, so go ahead and retry this item now
+  if (startTime === undefined) {
+    debug('RETRY', fn.name, args)
+    fn.apply(null, args)
+  } else if (Date.now() - startTime >= 60000) {
+    // it's been more than 60 seconds total, bail now
+    debug('TIMEOUT', fn.name, args)
+    var cb = args.pop()
+    if (typeof cb === 'function')
+      cb.call(null, err)
+  } else {
+    // the amount of time between the last attempt and right now
+    var sinceAttempt = Date.now() - lastTime
+    // the amount of time between when we first tried, and when we last tried
+    // rounded up to at least 1
+    var sinceStart = Math.max(lastTime - startTime, 1)
+    // backoff. wait longer than the total time we've been retrying, but only
+    // up to a maximum of 100ms
+    var desiredDelay = Math.min(sinceStart * 1.2, 100)
+    // it's been long enough since the last retry, do it again
+    if (sinceAttempt >= desiredDelay) {
+      debug('RETRY', fn.name, args)
+      fn.apply(null, args.concat([startTime]))
+    } else {
+      // if we can't do this job yet, push it to the end of the queue
+      // and let the next iteration check again
+      fs[gracefulQueue].push(elem)
+    }
+  }
+
+  // schedule our next run if one isn't already scheduled
+  if (retryTimer === undefined) {
+    retryTimer = setTimeout(retry, 0)
   }
 }
 
@@ -6009,13 +6082,13 @@ function patch (fs) {
   fs.lstatSync = statFixSync(fs.lstatSync)
 
   // if lchmod/lchown do not exist, then make them no-ops
-  if (!fs.lchmod) {
+  if (fs.chmod && !fs.lchmod) {
     fs.lchmod = function (path, mode, cb) {
       if (cb) process.nextTick(cb)
     }
     fs.lchmodSync = function () {}
   }
-  if (!fs.lchown) {
+  if (fs.chown && !fs.lchown) {
     fs.lchown = function (path, uid, gid, cb) {
       if (cb) process.nextTick(cb)
     }
@@ -6032,32 +6105,38 @@ function patch (fs) {
   // CPU to a busy looping process, which can cause the program causing the lock
   // contention to be starved of CPU by node, so the contention doesn't resolve.
   if (platform === "win32") {
-    fs.rename = (function (fs$rename) { return function (from, to, cb) {
-      var start = Date.now()
-      var backoff = 0;
-      fs$rename(from, to, function CB (er) {
-        if (er
-            && (er.code === "EACCES" || er.code === "EPERM")
-            && Date.now() - start < 60000) {
-          setTimeout(function() {
-            fs.stat(to, function (stater, st) {
-              if (stater && stater.code === "ENOENT")
-                fs$rename(from, to, CB);
-              else
-                cb(er)
-            })
-          }, backoff)
-          if (backoff < 100)
-            backoff += 10;
-          return;
-        }
-        if (cb) cb(er)
-      })
-    }})(fs.rename)
+    fs.rename = typeof fs.rename !== 'function' ? fs.rename
+    : (function (fs$rename) {
+      function rename (from, to, cb) {
+        var start = Date.now()
+        var backoff = 0;
+        fs$rename(from, to, function CB (er) {
+          if (er
+              && (er.code === "EACCES" || er.code === "EPERM")
+              && Date.now() - start < 60000) {
+            setTimeout(function() {
+              fs.stat(to, function (stater, st) {
+                if (stater && stater.code === "ENOENT")
+                  fs$rename(from, to, CB);
+                else
+                  cb(er)
+              })
+            }, backoff)
+            if (backoff < 100)
+              backoff += 10;
+            return;
+          }
+          if (cb) cb(er)
+        })
+      }
+      if (Object.setPrototypeOf) Object.setPrototypeOf(rename, fs$rename)
+      return rename
+    })(fs.rename)
   }
 
   // if read() returns EAGAIN, then just try it again.
-  fs.read = (function (fs$read) {
+  fs.read = typeof fs.read !== 'function' ? fs.read
+  : (function (fs$read) {
     function read (fd, buffer, offset, length, position, callback_) {
       var callback
       if (callback_ && typeof callback_ === 'function') {
@@ -6078,7 +6157,8 @@ function patch (fs) {
     return read
   })(fs.read)
 
-  fs.readSync = (function (fs$readSync) { return function (fd, buffer, offset, length, position) {
+  fs.readSync = typeof fs.readSync !== 'function' ? fs.readSync
+  : (function (fs$readSync) { return function (fd, buffer, offset, length, position) {
     var eagCounter = 0
     while (true) {
       try {
@@ -6137,7 +6217,7 @@ function patch (fs) {
   }
 
   function patchLutimes (fs) {
-    if (constants.hasOwnProperty("O_SYMLINK")) {
+    if (constants.hasOwnProperty("O_SYMLINK") && fs.futimes) {
       fs.lutimes = function (path, at, mt, cb) {
         fs.open(path, constants.O_SYMLINK, function (er, fd) {
           if (er) {
@@ -6171,7 +6251,7 @@ function patch (fs) {
         return ret
       }
 
-    } else {
+    } else if (fs.futimes) {
       fs.lutimes = function (_a, _b, _c, cb) { if (cb) process.nextTick(cb) }
       fs.lutimesSync = function () {}
     }
@@ -6248,8 +6328,10 @@ function patch (fs) {
     return function (target, options) {
       var stats = options ? orig.call(fs, target, options)
         : orig.call(fs, target)
-      if (stats.uid < 0) stats.uid += 0x100000000
-      if (stats.gid < 0) stats.gid += 0x100000000
+      if (stats) {
+        if (stats.uid < 0) stats.uid += 0x100000000
+        if (stats.gid < 0) stats.gid += 0x100000000
+      }
       return stats;
     }
   }
@@ -6883,7 +6965,7 @@ function versionIncluded(nodeVersion, specifierValue) {
 	}
 
 	var current = typeof nodeVersion === 'undefined'
-		? process.versions && process.versions.node && process.versions.node
+		? process.versions && process.versions.node
 		: nodeVersion;
 
 	if (typeof current !== 'string') {
@@ -7476,7 +7558,7 @@ exports.init = function(options, callback) {
         var failOnCheckFailItems = [];
         Object.keys(restricted).forEach((item) => {
             if(toCheckforFailOn.length > 0) {
-                if(toCheckforFailOn.indexOf(restricted[item].licenses) > -1) {
+                if(toCheckforFailOn.find(license => {return restricted[item].licenses.includes(license);})) {
                     failOnCheckFailItems.push(item);
                     console.error('Found license defined by the --failOn flag: "' + restricted[item].licenses + '". Exiting.');
                     process.exit(1);
@@ -7810,10 +7892,10 @@ module.exports = function(str) {
 module.exports = minimatch
 minimatch.Minimatch = Minimatch
 
-var path = { sep: '/' }
-try {
-  path = __nccwpck_require__(5622)
-} catch (er) {}
+var path = (function () { try { return __nccwpck_require__(5622) } catch (e) {}}()) || {
+  sep: '/'
+}
+minimatch.sep = path.sep
 
 var GLOBSTAR = minimatch.GLOBSTAR = Minimatch.GLOBSTAR = {}
 var expand = __nccwpck_require__(3717)
@@ -7865,43 +7947,64 @@ function filter (pattern, options) {
 }
 
 function ext (a, b) {
-  a = a || {}
   b = b || {}
   var t = {}
-  Object.keys(b).forEach(function (k) {
-    t[k] = b[k]
-  })
   Object.keys(a).forEach(function (k) {
     t[k] = a[k]
+  })
+  Object.keys(b).forEach(function (k) {
+    t[k] = b[k]
   })
   return t
 }
 
 minimatch.defaults = function (def) {
-  if (!def || !Object.keys(def).length) return minimatch
+  if (!def || typeof def !== 'object' || !Object.keys(def).length) {
+    return minimatch
+  }
 
   var orig = minimatch
 
   var m = function minimatch (p, pattern, options) {
-    return orig.minimatch(p, pattern, ext(def, options))
+    return orig(p, pattern, ext(def, options))
   }
 
   m.Minimatch = function Minimatch (pattern, options) {
     return new orig.Minimatch(pattern, ext(def, options))
+  }
+  m.Minimatch.defaults = function defaults (options) {
+    return orig.defaults(ext(def, options)).Minimatch
+  }
+
+  m.filter = function filter (pattern, options) {
+    return orig.filter(pattern, ext(def, options))
+  }
+
+  m.defaults = function defaults (options) {
+    return orig.defaults(ext(def, options))
+  }
+
+  m.makeRe = function makeRe (pattern, options) {
+    return orig.makeRe(pattern, ext(def, options))
+  }
+
+  m.braceExpand = function braceExpand (pattern, options) {
+    return orig.braceExpand(pattern, ext(def, options))
+  }
+
+  m.match = function (list, pattern, options) {
+    return orig.match(list, pattern, ext(def, options))
   }
 
   return m
 }
 
 Minimatch.defaults = function (def) {
-  if (!def || !Object.keys(def).length) return Minimatch
   return minimatch.defaults(def).Minimatch
 }
 
 function minimatch (p, pattern, options) {
-  if (typeof pattern !== 'string') {
-    throw new TypeError('glob pattern string required')
-  }
+  assertValidPattern(pattern)
 
   if (!options) options = {}
 
@@ -7909,9 +8012,6 @@ function minimatch (p, pattern, options) {
   if (!options.nocomment && pattern.charAt(0) === '#') {
     return false
   }
-
-  // "" only matches ""
-  if (pattern.trim() === '') return p === ''
 
   return new Minimatch(pattern, options).match(p)
 }
@@ -7921,15 +8021,14 @@ function Minimatch (pattern, options) {
     return new Minimatch(pattern, options)
   }
 
-  if (typeof pattern !== 'string') {
-    throw new TypeError('glob pattern string required')
-  }
+  assertValidPattern(pattern)
 
   if (!options) options = {}
+
   pattern = pattern.trim()
 
   // windows support: need to use /, not \
-  if (path.sep !== '/') {
+  if (!options.allowWindowsEscape && path.sep !== '/') {
     pattern = pattern.split(path.sep).join('/')
   }
 
@@ -7940,6 +8039,7 @@ function Minimatch (pattern, options) {
   this.negate = false
   this.comment = false
   this.empty = false
+  this.partial = !!options.partial
 
   // make the set of regexps etc.
   this.make()
@@ -7949,9 +8049,6 @@ Minimatch.prototype.debug = function () {}
 
 Minimatch.prototype.make = make
 function make () {
-  // don't do it more than once.
-  if (this._made) return
-
   var pattern = this.pattern
   var options = this.options
 
@@ -7971,7 +8068,7 @@ function make () {
   // step 2: expand braces
   var set = this.globSet = this.braceExpand()
 
-  if (options.debug) this.debug = console.error
+  if (options.debug) this.debug = function debug() { console.error.apply(console, arguments) }
 
   this.debug(this.pattern, set)
 
@@ -8051,17 +8148,27 @@ function braceExpand (pattern, options) {
   pattern = typeof pattern === 'undefined'
     ? this.pattern : pattern
 
-  if (typeof pattern === 'undefined') {
-    throw new TypeError('undefined pattern')
-  }
+  assertValidPattern(pattern)
 
-  if (options.nobrace ||
-    !pattern.match(/\{.*\}/)) {
+  // Thanks to Yeting Li <https://github.com/yetingli> for
+  // improving this regexp to avoid a ReDOS vulnerability.
+  if (options.nobrace || !/\{(?:(?!\{).)*\}/.test(pattern)) {
     // shortcut. no need to expand.
     return [pattern]
   }
 
   return expand(pattern)
+}
+
+var MAX_PATTERN_LENGTH = 1024 * 64
+var assertValidPattern = function (pattern) {
+  if (typeof pattern !== 'string') {
+    throw new TypeError('invalid pattern')
+  }
+
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    throw new TypeError('pattern is too long')
+  }
 }
 
 // parse a component of the expanded set.
@@ -8078,14 +8185,17 @@ function braceExpand (pattern, options) {
 Minimatch.prototype.parse = parse
 var SUBPARSE = {}
 function parse (pattern, isSub) {
-  if (pattern.length > 1024 * 64) {
-    throw new TypeError('pattern is too long')
-  }
+  assertValidPattern(pattern)
 
   var options = this.options
 
   // shortcuts
-  if (!options.noglobstar && pattern === '**') return GLOBSTAR
+  if (pattern === '**') {
+    if (!options.noglobstar)
+      return GLOBSTAR
+    else
+      pattern = '*'
+  }
   if (pattern === '') return ''
 
   var re = ''
@@ -8141,10 +8251,12 @@ function parse (pattern, isSub) {
     }
 
     switch (c) {
-      case '/':
+      /* istanbul ignore next */
+      case '/': {
         // completely not allowed, even escaped.
         // Should already be path-split by now.
         return false
+      }
 
       case '\\':
         clearStateChar()
@@ -8263,25 +8375,23 @@ function parse (pattern, isSub) {
 
         // handle the case where we left a class open.
         // "[z-a]" is valid, equivalent to "\[z-a\]"
-        if (inClass) {
-          // split where the last [ was, make sure we don't have
-          // an invalid re. if so, re-walk the contents of the
-          // would-be class to re-translate any characters that
-          // were passed through as-is
-          // TODO: It would probably be faster to determine this
-          // without a try/catch and a new RegExp, but it's tricky
-          // to do safely.  For now, this is safe and works.
-          var cs = pattern.substring(classStart + 1, i)
-          try {
-            RegExp('[' + cs + ']')
-          } catch (er) {
-            // not a valid class!
-            var sp = this.parse(cs, SUBPARSE)
-            re = re.substr(0, reClassStart) + '\\[' + sp[0] + '\\]'
-            hasMagic = hasMagic || sp[1]
-            inClass = false
-            continue
-          }
+        // split where the last [ was, make sure we don't have
+        // an invalid re. if so, re-walk the contents of the
+        // would-be class to re-translate any characters that
+        // were passed through as-is
+        // TODO: It would probably be faster to determine this
+        // without a try/catch and a new RegExp, but it's tricky
+        // to do safely.  For now, this is safe and works.
+        var cs = pattern.substring(classStart + 1, i)
+        try {
+          RegExp('[' + cs + ']')
+        } catch (er) {
+          // not a valid class!
+          var sp = this.parse(cs, SUBPARSE)
+          re = re.substr(0, reClassStart) + '\\[' + sp[0] + '\\]'
+          hasMagic = hasMagic || sp[1]
+          inClass = false
+          continue
         }
 
         // finish up the class.
@@ -8365,9 +8475,7 @@ function parse (pattern, isSub) {
   // something that could conceivably capture a dot
   var addPatternStart = false
   switch (re.charAt(0)) {
-    case '.':
-    case '[':
-    case '(': addPatternStart = true
+    case '[': case '.': case '(': addPatternStart = true
   }
 
   // Hack to work around lack of negative lookbehind in JS
@@ -8429,7 +8537,7 @@ function parse (pattern, isSub) {
   var flags = options.nocase ? 'i' : ''
   try {
     var regExp = new RegExp('^' + re + '$', flags)
-  } catch (er) {
+  } catch (er) /* istanbul ignore next - should be impossible */ {
     // If it was an invalid regular expression, then it can't match
     // anything.  This trick looks for a character after the end of
     // the string, which is of course impossible, except in multi-line
@@ -8487,7 +8595,7 @@ function makeRe () {
 
   try {
     this.regexp = new RegExp(re, flags)
-  } catch (ex) {
+  } catch (ex) /* istanbul ignore next - should be impossible */ {
     this.regexp = false
   }
   return this.regexp
@@ -8505,8 +8613,8 @@ minimatch.match = function (list, pattern, options) {
   return list
 }
 
-Minimatch.prototype.match = match
-function match (f, partial) {
+Minimatch.prototype.match = function match (f, partial) {
+  if (typeof partial === 'undefined') partial = this.partial
   this.debug('match', f, this.pattern)
   // short-circuit in the case of busted things.
   // comments, etc.
@@ -8588,6 +8696,7 @@ Minimatch.prototype.matchOne = function (file, pattern, partial) {
 
     // should be impossible.
     // some invalid regexp stuff in the set.
+    /* istanbul ignore if */
     if (p === false) return false
 
     if (p === GLOBSTAR) {
@@ -8661,6 +8770,7 @@ Minimatch.prototype.matchOne = function (file, pattern, partial) {
       // no match was found.
       // However, in partial mode, we can't say this is necessarily over.
       // If there's more *pattern* left, then
+      /* istanbul ignore if */
       if (partial) {
         // ran out of file
         this.debug('\n>>> no match, partial?', file, fr, pattern, pr)
@@ -8674,11 +8784,7 @@ Minimatch.prototype.matchOne = function (file, pattern, partial) {
     // patterns with magic have been turned into regexps.
     var hit
     if (typeof p === 'string') {
-      if (options.nocase) {
-        hit = f.toLowerCase() === p.toLowerCase()
-      } else {
-        hit = f === p
-      }
+      hit = f === p
       this.debug('string match', p, f, hit)
     } else {
       hit = f.match(p)
@@ -8709,16 +8815,16 @@ Minimatch.prototype.matchOne = function (file, pattern, partial) {
     // this is ok if we're doing the match as part of
     // a glob fs traversal.
     return partial
-  } else if (pi === pl) {
+  } else /* istanbul ignore else */ if (pi === pl) {
     // ran out of pattern, still have file left.
     // this is only acceptable if we're on the very last
     // empty segment of a file with a trailing slash.
     // a/* should match a/b/
-    var emptyFileEnd = (fi === fl - 1) && (file[fi] === '')
-    return emptyFileEnd
+    return (fi === fl - 1) && (file[fi] === '')
   }
 
   // should be unreachable.
+  /* istanbul ignore next */
   throw new Error('wtf?')
 }
 
@@ -8760,7 +8866,7 @@ function mkdirP (p, opts, f, made) {
     }
     if (!made) made = null;
     
-    var cb = f || function () {};
+    var cb = f || /* istanbul ignore next */ function () {};
     p = path.resolve(p);
     
     xfs.mkdir(p, mode, function (er) {
@@ -8770,8 +8876,10 @@ function mkdirP (p, opts, f, made) {
         }
         switch (er.code) {
             case 'ENOENT':
+                /* istanbul ignore if */
                 if (path.dirname(p) === p) return cb(er);
                 mkdirP(path.dirname(p), opts, function (er, made) {
+                    /* istanbul ignore if */
                     if (er) cb(er, made);
                     else mkdirP(p, opts, cb, made);
                 });
@@ -8826,9 +8934,10 @@ mkdirP.sync = function sync (p, opts, made) {
                 try {
                     stat = xfs.statSync(p);
                 }
-                catch (err1) {
+                catch (err1) /* istanbul ignore next */ {
                     throw err0;
                 }
+                /* istanbul ignore if */
                 if (!stat.isDirectory()) throw err0;
                 break;
         }
@@ -9683,29 +9792,14 @@ module.exports.win32 = win32;
 
 var isWindows = process.platform === 'win32';
 
-// Regex to split a windows path into three parts: [*, device, slash,
-// tail] windows-only
-var splitDeviceRe =
-    /^([a-zA-Z]:|[\\\/]{2}[^\\\/]+[\\\/]+[^\\\/]+)?([\\\/])?([\s\S]*?)$/;
-
-// Regex to split the tail part of the above into [*, dir, basename, ext]
-var splitTailRe =
-    /^([\s\S]*?)((?:\.{1,2}|[^\\\/]+?|)(\.[^.\/\\]*|))(?:[\\\/]*)$/;
+// Regex to split a windows path into into [dir, root, basename, name, ext]
+var splitWindowsRe =
+    /^(((?:[a-zA-Z]:|[\\\/]{2}[^\\\/]+[\\\/]+[^\\\/]+)?[\\\/]?)(?:[^\\\/]*[\\\/])*)((\.{1,2}|[^\\\/]+?|)(\.[^.\/\\]*|))[\\\/]*$/;
 
 var win32 = {};
 
-// Function to split a filename into [root, dir, basename, ext]
 function win32SplitPath(filename) {
-  // Separate device+slash from tail
-  var result = splitDeviceRe.exec(filename),
-      device = (result[1] || '') + (result[2] || ''),
-      tail = result[3] || '';
-  // Split the tail into dir, basename and extension
-  var result2 = splitTailRe.exec(tail),
-      dir = result2[1],
-      basename = result2[2],
-      ext = result2[3];
-  return [device, dir, basename, ext];
+  return splitWindowsRe.exec(filename).slice(1);
 }
 
 win32.parse = function(pathString) {
@@ -9715,24 +9809,24 @@ win32.parse = function(pathString) {
     );
   }
   var allParts = win32SplitPath(pathString);
-  if (!allParts || allParts.length !== 4) {
+  if (!allParts || allParts.length !== 5) {
     throw new TypeError("Invalid path '" + pathString + "'");
   }
   return {
-    root: allParts[0],
-    dir: allParts[0] + allParts[1].slice(0, -1),
+    root: allParts[1],
+    dir: allParts[0] === allParts[1] ? allParts[0] : allParts[0].slice(0, -1),
     base: allParts[2],
-    ext: allParts[3],
-    name: allParts[2].slice(0, allParts[2].length - allParts[3].length)
+    ext: allParts[4],
+    name: allParts[3]
   };
 };
 
 
 
-// Split a filename into [root, dir, basename, ext], unix version
+// Split a filename into [dir, root, basename, name, ext], unix version
 // 'root' is just a slash, or nothing.
 var splitPathRe =
-    /^(\/?|)([\s\S]*?)((?:\.{1,2}|[^\/]+?|)(\.[^.\/]*|))(?:[\/]*)$/;
+    /^((\/?)(?:[^\/]*\/)*)((\.{1,2}|[^\/]+?|)(\.[^.\/]*|))[\/]*$/;
 var posix = {};
 
 
@@ -9748,19 +9842,16 @@ posix.parse = function(pathString) {
     );
   }
   var allParts = posixSplitPath(pathString);
-  if (!allParts || allParts.length !== 4) {
+  if (!allParts || allParts.length !== 5) {
     throw new TypeError("Invalid path '" + pathString + "'");
   }
-  allParts[1] = allParts[1] || '';
-  allParts[2] = allParts[2] || '';
-  allParts[3] = allParts[3] || '';
-
+  
   return {
-    root: allParts[0],
-    dir: allParts[0] + allParts[1].slice(0, -1),
+    root: allParts[1],
+    dir: allParts[0].slice(0, -1),
     base: allParts[2],
-    ext: allParts[3],
-    name: allParts[2].slice(0, allParts[2].length - allParts[3].length)
+    ext: allParts[4],
+    name: allParts[3],
   };
 };
 
@@ -10811,6 +10902,7 @@ module.exports = async;
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var fs = __nccwpck_require__(5747);
+var getHomedir = __nccwpck_require__(5079);
 var path = __nccwpck_require__(5622);
 var caller = __nccwpck_require__(6155);
 var nodeModulesPaths = __nccwpck_require__(1433);
@@ -10818,6 +10910,14 @@ var normalizeOptions = __nccwpck_require__(7990);
 var isCore = __nccwpck_require__(6873);
 
 var realpathFS = fs.realpath && typeof fs.realpath.native === 'function' ? fs.realpath.native : fs.realpath;
+
+var homedir = getHomedir();
+var defaultPaths = function () {
+    return [
+        path.join(homedir, '.node_modules'),
+        path.join(homedir, '.node_libraries')
+    ];
+};
 
 var defaultIsFile = function isFile(file, cb) {
     fs.stat(file, function (err, stat) {
@@ -10910,7 +11010,7 @@ module.exports = function resolve(x, options, callback) {
     var basedir = opts.basedir || path.dirname(caller());
     var parent = opts.filename || basedir;
 
-    opts.paths = opts.paths || [];
+    opts.paths = opts.paths || defaultPaths();
 
     // ensure that `basedir` is an absolute path at this point, resolving against the process' current working directory
     var absoluteStart = path.resolve(basedir);
@@ -11169,9 +11269,8 @@ function specifierIncluded(specifier) {
             return cur < ver;
         } else if (op === '>=') {
             return cur >= ver;
-        } else {
-            return false;
         }
+        return false;
     }
     return op === '>=';
 }
@@ -11209,6 +11308,38 @@ module.exports = core;
 
 /***/ }),
 
+/***/ 5079:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var os = __nccwpck_require__(2087);
+
+// adapted from https://github.com/sindresorhus/os-homedir/blob/11e089f4754db38bb535e5a8416320c4446e8cfd/index.js
+
+module.exports = os.homedir || function homedir() {
+    var home = process.env.HOME;
+    var user = process.env.LOGNAME || process.env.USER || process.env.LNAME || process.env.USERNAME;
+
+    if (process.platform === 'win32') {
+        return process.env.USERPROFILE || process.env.HOMEDRIVE + process.env.HOMEPATH || home || null;
+    }
+
+    if (process.platform === 'darwin') {
+        return home || (user ? '/Users/' + user : null);
+    }
+
+    if (process.platform === 'linux') {
+        return home || (process.getuid() === 0 ? '/root' : (user ? '/home/' + user : null)); // eslint-disable-line no-extra-parens
+    }
+
+    return home || null;
+};
+
+
+/***/ }),
+
 /***/ 8115:
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
@@ -11225,7 +11356,7 @@ module.exports = function isCore(x) {
 /***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 var path = __nccwpck_require__(5622);
-var parse = path.parse || __nccwpck_require__(5980);
+var parse = path.parse || __nccwpck_require__(5980); // eslint-disable-line global-require
 
 var getNodeModulesDirs = function getNodeModulesDirs(absoluteStart, modules) {
     var prefix = '/';
@@ -11293,30 +11424,39 @@ module.exports = function (x, opts) {
 var isCore = __nccwpck_require__(6873);
 var fs = __nccwpck_require__(5747);
 var path = __nccwpck_require__(5622);
+var getHomedir = __nccwpck_require__(5079);
 var caller = __nccwpck_require__(6155);
 var nodeModulesPaths = __nccwpck_require__(1433);
 var normalizeOptions = __nccwpck_require__(7990);
 
 var realpathFS = fs.realpathSync && typeof fs.realpathSync.native === 'function' ? fs.realpathSync.native : fs.realpathSync;
 
+var homedir = getHomedir();
+var defaultPaths = function () {
+    return [
+        path.join(homedir, '.node_modules'),
+        path.join(homedir, '.node_libraries')
+    ];
+};
+
 var defaultIsFile = function isFile(file) {
     try {
-        var stat = fs.statSync(file);
+        var stat = fs.statSync(file, { throwIfNoEntry: false });
     } catch (e) {
         if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')) return false;
         throw e;
     }
-    return stat.isFile() || stat.isFIFO();
+    return !!stat && (stat.isFile() || stat.isFIFO());
 };
 
 var defaultIsDir = function isDirectory(dir) {
     try {
-        var stat = fs.statSync(dir);
+        var stat = fs.statSync(dir, { throwIfNoEntry: false });
     } catch (e) {
         if (e && (e.code === 'ENOENT' || e.code === 'ENOTDIR')) return false;
         throw e;
     }
-    return stat.isDirectory();
+    return !!stat && stat.isDirectory();
 };
 
 var defaultRealpathSync = function realpathSync(x) {
@@ -11374,7 +11514,7 @@ module.exports = function resolveSync(x, options) {
     var basedir = opts.basedir || path.dirname(caller());
     var parent = opts.filename || basedir;
 
-    opts.paths = opts.paths || [];
+    opts.paths = opts.paths || defaultPaths();
 
     // ensure that `basedir` is an absolute path at this point, resolving against the process' current working directory
     var absoluteStart = maybeRealpathSync(realpathSync, path.resolve(basedir), opts);
@@ -14401,7 +14541,7 @@ function wrappy (fn, cb) {
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"assert":true,"node:assert":">= 16","assert/strict":">= 15","node:assert/strict":">= 16","async_hooks":">= 8","node:async_hooks":">= 16","buffer_ieee754":"< 0.9.7","buffer":true,"node:buffer":">= 16","child_process":true,"node:child_process":">= 16","cluster":true,"node:cluster":">= 16","console":true,"node:console":">= 16","constants":true,"node:constants":">= 16","crypto":true,"node:crypto":">= 16","_debug_agent":">= 1 && < 8","_debugger":"< 8","dgram":true,"node:dgram":">= 16","diagnostics_channel":">= 15.1","node:diagnostics_channel":">= 16","dns":true,"node:dns":">= 16","dns/promises":">= 15","node:dns/promises":">= 16","domain":">= 0.7.12","node:domain":">= 16","events":true,"node:events":">= 16","freelist":"< 6","fs":true,"node:fs":">= 16","fs/promises":[">= 10 && < 10.1",">= 14"],"node:fs/promises":">= 16","_http_agent":">= 0.11.1","node:_http_agent":">= 16","_http_client":">= 0.11.1","node:_http_client":">= 16","_http_common":">= 0.11.1","node:_http_common":">= 16","_http_incoming":">= 0.11.1","node:_http_incoming":">= 16","_http_outgoing":">= 0.11.1","node:_http_outgoing":">= 16","_http_server":">= 0.11.1","node:_http_server":">= 16","http":true,"node:http":">= 16","http2":">= 8.8","node:http2":">= 16","https":true,"node:https":">= 16","inspector":">= 8","node:inspector":">= 16","_linklist":"< 8","module":true,"node:module":">= 16","net":true,"node:net":">= 16","node-inspect/lib/_inspect":">= 7.6 && < 12","node-inspect/lib/internal/inspect_client":">= 7.6 && < 12","node-inspect/lib/internal/inspect_repl":">= 7.6 && < 12","os":true,"node:os":">= 16","path":true,"node:path":">= 16","path/posix":">= 15.3","node:path/posix":">= 16","path/win32":">= 15.3","node:path/win32":">= 16","perf_hooks":">= 8.5","node:perf_hooks":">= 16","process":">= 1","node:process":">= 16","punycode":true,"node:punycode":">= 16","querystring":true,"node:querystring":">= 16","readline":true,"node:readline":">= 16","repl":true,"node:repl":">= 16","smalloc":">= 0.11.5 && < 3","_stream_duplex":">= 0.9.4","node:_stream_duplex":">= 16","_stream_transform":">= 0.9.4","node:_stream_transform":">= 16","_stream_wrap":">= 1.4.1","node:_stream_wrap":">= 16","_stream_passthrough":">= 0.9.4","node:_stream_passthrough":">= 16","_stream_readable":">= 0.9.4","node:_stream_readable":">= 16","_stream_writable":">= 0.9.4","node:_stream_writable":">= 16","stream":true,"node:stream":">= 16","stream/promises":">= 15","node:stream/promises":">= 16","string_decoder":true,"node:string_decoder":">= 16","sys":[">= 0.6 && < 0.7",">= 0.8"],"node:sys":">= 16","timers":true,"node:timers":">= 16","timers/promises":">= 15","node:timers/promises":">= 16","_tls_common":">= 0.11.13","node:_tls_common":">= 16","_tls_legacy":">= 0.11.3 && < 10","_tls_wrap":">= 0.11.3","node:_tls_wrap":">= 16","tls":true,"node:tls":">= 16","trace_events":">= 10","node:trace_events":">= 16","tty":true,"node:tty":">= 16","url":true,"node:url":">= 16","util":true,"node:util":">= 16","util/types":">= 15.3","node:util/types":">= 16","v8/tools/arguments":">= 10 && < 12","v8/tools/codemap":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/consarray":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/csvparser":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/logreader":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/profile_view":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/splaytree":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8":">= 1","node:v8":">= 16","vm":true,"node:vm":">= 16","wasi":">= 13.4 && < 13.5","worker_threads":">= 11.7","node:worker_threads":">= 16","zlib":true,"node:zlib":">= 16"}');
+module.exports = JSON.parse('{"assert":true,"node:assert":[">= 14.18 && < 15",">= 16"],"assert/strict":">= 15","node:assert/strict":">= 16","async_hooks":">= 8","node:async_hooks":[">= 14.18 && < 15",">= 16"],"buffer_ieee754":">= 0.5 && < 0.9.7","buffer":true,"node:buffer":[">= 14.18 && < 15",">= 16"],"child_process":true,"node:child_process":[">= 14.18 && < 15",">= 16"],"cluster":">= 0.5","node:cluster":[">= 14.18 && < 15",">= 16"],"console":true,"node:console":[">= 14.18 && < 15",">= 16"],"constants":true,"node:constants":[">= 14.18 && < 15",">= 16"],"crypto":true,"node:crypto":[">= 14.18 && < 15",">= 16"],"_debug_agent":">= 1 && < 8","_debugger":"< 8","dgram":true,"node:dgram":[">= 14.18 && < 15",">= 16"],"diagnostics_channel":[">= 14.17 && < 15",">= 15.1"],"node:diagnostics_channel":[">= 14.18 && < 15",">= 16"],"dns":true,"node:dns":[">= 14.18 && < 15",">= 16"],"dns/promises":">= 15","node:dns/promises":">= 16","domain":">= 0.7.12","node:domain":[">= 14.18 && < 15",">= 16"],"events":true,"node:events":[">= 14.18 && < 15",">= 16"],"freelist":"< 6","fs":true,"node:fs":[">= 14.18 && < 15",">= 16"],"fs/promises":[">= 10 && < 10.1",">= 14"],"node:fs/promises":[">= 14.18 && < 15",">= 16"],"_http_agent":">= 0.11.1","node:_http_agent":[">= 14.18 && < 15",">= 16"],"_http_client":">= 0.11.1","node:_http_client":[">= 14.18 && < 15",">= 16"],"_http_common":">= 0.11.1","node:_http_common":[">= 14.18 && < 15",">= 16"],"_http_incoming":">= 0.11.1","node:_http_incoming":[">= 14.18 && < 15",">= 16"],"_http_outgoing":">= 0.11.1","node:_http_outgoing":[">= 14.18 && < 15",">= 16"],"_http_server":">= 0.11.1","node:_http_server":[">= 14.18 && < 15",">= 16"],"http":true,"node:http":[">= 14.18 && < 15",">= 16"],"http2":">= 8.8","node:http2":[">= 14.18 && < 15",">= 16"],"https":true,"node:https":[">= 14.18 && < 15",">= 16"],"inspector":">= 8","node:inspector":[">= 14.18 && < 15",">= 16"],"_linklist":"< 8","module":true,"node:module":[">= 14.18 && < 15",">= 16"],"net":true,"node:net":[">= 14.18 && < 15",">= 16"],"node-inspect/lib/_inspect":">= 7.6 && < 12","node-inspect/lib/internal/inspect_client":">= 7.6 && < 12","node-inspect/lib/internal/inspect_repl":">= 7.6 && < 12","os":true,"node:os":[">= 14.18 && < 15",">= 16"],"path":true,"node:path":[">= 14.18 && < 15",">= 16"],"path/posix":">= 15.3","node:path/posix":">= 16","path/win32":">= 15.3","node:path/win32":">= 16","perf_hooks":">= 8.5","node:perf_hooks":[">= 14.18 && < 15",">= 16"],"process":">= 1","node:process":[">= 14.18 && < 15",">= 16"],"punycode":">= 0.5","node:punycode":[">= 14.18 && < 15",">= 16"],"querystring":true,"node:querystring":[">= 14.18 && < 15",">= 16"],"readline":true,"node:readline":[">= 14.18 && < 15",">= 16"],"readline/promises":">= 17","node:readline/promises":">= 17","repl":true,"node:repl":[">= 14.18 && < 15",">= 16"],"smalloc":">= 0.11.5 && < 3","_stream_duplex":">= 0.9.4","node:_stream_duplex":[">= 14.18 && < 15",">= 16"],"_stream_transform":">= 0.9.4","node:_stream_transform":[">= 14.18 && < 15",">= 16"],"_stream_wrap":">= 1.4.1","node:_stream_wrap":[">= 14.18 && < 15",">= 16"],"_stream_passthrough":">= 0.9.4","node:_stream_passthrough":[">= 14.18 && < 15",">= 16"],"_stream_readable":">= 0.9.4","node:_stream_readable":[">= 14.18 && < 15",">= 16"],"_stream_writable":">= 0.9.4","node:_stream_writable":[">= 14.18 && < 15",">= 16"],"stream":true,"node:stream":[">= 14.18 && < 15",">= 16"],"stream/consumers":">= 16.7","node:stream/consumers":">= 16.7","stream/promises":">= 15","node:stream/promises":">= 16","stream/web":">= 16.5","node:stream/web":">= 16.5","string_decoder":true,"node:string_decoder":[">= 14.18 && < 15",">= 16"],"sys":[">= 0.4 && < 0.7",">= 0.8"],"node:sys":[">= 14.18 && < 15",">= 16"],"node:test":">= 18","timers":true,"node:timers":[">= 14.18 && < 15",">= 16"],"timers/promises":">= 15","node:timers/promises":">= 16","_tls_common":">= 0.11.13","node:_tls_common":[">= 14.18 && < 15",">= 16"],"_tls_legacy":">= 0.11.3 && < 10","_tls_wrap":">= 0.11.3","node:_tls_wrap":[">= 14.18 && < 15",">= 16"],"tls":true,"node:tls":[">= 14.18 && < 15",">= 16"],"trace_events":">= 10","node:trace_events":[">= 14.18 && < 15",">= 16"],"tty":true,"node:tty":[">= 14.18 && < 15",">= 16"],"url":true,"node:url":[">= 14.18 && < 15",">= 16"],"util":true,"node:util":[">= 14.18 && < 15",">= 16"],"util/types":">= 15.3","node:util/types":">= 16","v8/tools/arguments":">= 10 && < 12","v8/tools/codemap":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/consarray":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/csvparser":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/logreader":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/profile_view":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/splaytree":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8":">= 1","node:v8":[">= 14.18 && < 15",">= 16"],"vm":true,"node:vm":[">= 14.18 && < 15",">= 16"],"wasi":">= 13.4 && < 13.5","worker_threads":">= 11.7","node:worker_threads":[">= 14.18 && < 15",">= 16"],"zlib":">= 0.5","node:zlib":[">= 14.18 && < 15",">= 16"]}');
 
 /***/ }),
 
@@ -14425,7 +14565,7 @@ module.exports = JSON.parse('{"repositories":"\'repositories\' (plural) Not supp
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('{"assert":true,"assert/strict":">= 15","async_hooks":">= 8","buffer_ieee754":"< 0.9.7","buffer":true,"child_process":true,"cluster":true,"console":true,"constants":true,"crypto":true,"_debug_agent":">= 1 && < 8","_debugger":"< 8","dgram":true,"diagnostics_channel":">= 15.1","dns":true,"dns/promises":">= 15","domain":">= 0.7.12","events":true,"freelist":"< 6","fs":true,"fs/promises":[">= 10 && < 10.1",">= 14"],"_http_agent":">= 0.11.1","_http_client":">= 0.11.1","_http_common":">= 0.11.1","_http_incoming":">= 0.11.1","_http_outgoing":">= 0.11.1","_http_server":">= 0.11.1","http":true,"http2":">= 8.8","https":true,"inspector":">= 8.0.0","_linklist":"< 8","module":true,"net":true,"node-inspect/lib/_inspect":">= 7.6.0 && < 12","node-inspect/lib/internal/inspect_client":">= 7.6.0 && < 12","node-inspect/lib/internal/inspect_repl":">= 7.6.0 && < 12","os":true,"path":true,"path/posix":">= 15.3","path/win32":">= 15.3","perf_hooks":">= 8.5","process":">= 1","punycode":true,"querystring":true,"readline":true,"repl":true,"smalloc":">= 0.11.5 && < 3","_stream_duplex":">= 0.9.4","_stream_transform":">= 0.9.4","_stream_wrap":">= 1.4.1","_stream_passthrough":">= 0.9.4","_stream_readable":">= 0.9.4","_stream_writable":">= 0.9.4","stream":true,"stream/promises":">= 15","string_decoder":true,"sys":[">= 0.6 && < 0.7",">= 0.8"],"timers":true,"timers/promises":">= 15","_tls_common":">= 0.11.13","_tls_legacy":">= 0.11.3 && < 10","_tls_wrap":">= 0.11.3","tls":true,"trace_events":">= 10","tty":true,"url":true,"util":true,"util/types":">= 15.3","v8/tools/arguments":">= 10 && < 12","v8/tools/codemap":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8/tools/consarray":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8/tools/csvparser":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8/tools/logreader":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8/tools/profile_view":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8/tools/splaytree":[">= 4.4.0 && < 5",">= 5.2.0 && < 12"],"v8":">= 1","vm":true,"wasi":">= 13.4 && < 13.5","worker_threads":">= 11.7","zlib":true}');
+module.exports = JSON.parse('{"assert":true,"node:assert":[">= 14.18 && < 15",">= 16"],"assert/strict":">= 15","node:assert/strict":">= 16","async_hooks":">= 8","node:async_hooks":[">= 14.18 && < 15",">= 16"],"buffer_ieee754":">= 0.5 && < 0.9.7","buffer":true,"node:buffer":[">= 14.18 && < 15",">= 16"],"child_process":true,"node:child_process":[">= 14.18 && < 15",">= 16"],"cluster":">= 0.5","node:cluster":[">= 14.18 && < 15",">= 16"],"console":true,"node:console":[">= 14.18 && < 15",">= 16"],"constants":true,"node:constants":[">= 14.18 && < 15",">= 16"],"crypto":true,"node:crypto":[">= 14.18 && < 15",">= 16"],"_debug_agent":">= 1 && < 8","_debugger":"< 8","dgram":true,"node:dgram":[">= 14.18 && < 15",">= 16"],"diagnostics_channel":[">= 14.17 && < 15",">= 15.1"],"node:diagnostics_channel":[">= 14.18 && < 15",">= 16"],"dns":true,"node:dns":[">= 14.18 && < 15",">= 16"],"dns/promises":">= 15","node:dns/promises":">= 16","domain":">= 0.7.12","node:domain":[">= 14.18 && < 15",">= 16"],"events":true,"node:events":[">= 14.18 && < 15",">= 16"],"freelist":"< 6","fs":true,"node:fs":[">= 14.18 && < 15",">= 16"],"fs/promises":[">= 10 && < 10.1",">= 14"],"node:fs/promises":[">= 14.18 && < 15",">= 16"],"_http_agent":">= 0.11.1","node:_http_agent":[">= 14.18 && < 15",">= 16"],"_http_client":">= 0.11.1","node:_http_client":[">= 14.18 && < 15",">= 16"],"_http_common":">= 0.11.1","node:_http_common":[">= 14.18 && < 15",">= 16"],"_http_incoming":">= 0.11.1","node:_http_incoming":[">= 14.18 && < 15",">= 16"],"_http_outgoing":">= 0.11.1","node:_http_outgoing":[">= 14.18 && < 15",">= 16"],"_http_server":">= 0.11.1","node:_http_server":[">= 14.18 && < 15",">= 16"],"http":true,"node:http":[">= 14.18 && < 15",">= 16"],"http2":">= 8.8","node:http2":[">= 14.18 && < 15",">= 16"],"https":true,"node:https":[">= 14.18 && < 15",">= 16"],"inspector":">= 8","node:inspector":[">= 14.18 && < 15",">= 16"],"_linklist":"< 8","module":true,"node:module":[">= 14.18 && < 15",">= 16"],"net":true,"node:net":[">= 14.18 && < 15",">= 16"],"node-inspect/lib/_inspect":">= 7.6 && < 12","node-inspect/lib/internal/inspect_client":">= 7.6 && < 12","node-inspect/lib/internal/inspect_repl":">= 7.6 && < 12","os":true,"node:os":[">= 14.18 && < 15",">= 16"],"path":true,"node:path":[">= 14.18 && < 15",">= 16"],"path/posix":">= 15.3","node:path/posix":">= 16","path/win32":">= 15.3","node:path/win32":">= 16","perf_hooks":">= 8.5","node:perf_hooks":[">= 14.18 && < 15",">= 16"],"process":">= 1","node:process":[">= 14.18 && < 15",">= 16"],"punycode":">= 0.5","node:punycode":[">= 14.18 && < 15",">= 16"],"querystring":true,"node:querystring":[">= 14.18 && < 15",">= 16"],"readline":true,"node:readline":[">= 14.18 && < 15",">= 16"],"readline/promises":">= 17","node:readline/promises":">= 17","repl":true,"node:repl":[">= 14.18 && < 15",">= 16"],"smalloc":">= 0.11.5 && < 3","_stream_duplex":">= 0.9.4","node:_stream_duplex":[">= 14.18 && < 15",">= 16"],"_stream_transform":">= 0.9.4","node:_stream_transform":[">= 14.18 && < 15",">= 16"],"_stream_wrap":">= 1.4.1","node:_stream_wrap":[">= 14.18 && < 15",">= 16"],"_stream_passthrough":">= 0.9.4","node:_stream_passthrough":[">= 14.18 && < 15",">= 16"],"_stream_readable":">= 0.9.4","node:_stream_readable":[">= 14.18 && < 15",">= 16"],"_stream_writable":">= 0.9.4","node:_stream_writable":[">= 14.18 && < 15",">= 16"],"stream":true,"node:stream":[">= 14.18 && < 15",">= 16"],"stream/consumers":">= 16.7","node:stream/consumers":">= 16.7","stream/promises":">= 15","node:stream/promises":">= 16","stream/web":">= 16.5","node:stream/web":">= 16.5","string_decoder":true,"node:string_decoder":[">= 14.18 && < 15",">= 16"],"sys":[">= 0.4 && < 0.7",">= 0.8"],"node:sys":[">= 14.18 && < 15",">= 16"],"timers":true,"node:timers":[">= 14.18 && < 15",">= 16"],"timers/promises":">= 15","node:timers/promises":">= 16","_tls_common":">= 0.11.13","node:_tls_common":[">= 14.18 && < 15",">= 16"],"_tls_legacy":">= 0.11.3 && < 10","_tls_wrap":">= 0.11.3","node:_tls_wrap":[">= 14.18 && < 15",">= 16"],"tls":true,"node:tls":[">= 14.18 && < 15",">= 16"],"trace_events":">= 10","node:trace_events":[">= 14.18 && < 15",">= 16"],"tty":true,"node:tty":[">= 14.18 && < 15",">= 16"],"url":true,"node:url":[">= 14.18 && < 15",">= 16"],"util":true,"node:util":[">= 14.18 && < 15",">= 16"],"util/types":">= 15.3","node:util/types":">= 16","v8/tools/arguments":">= 10 && < 12","v8/tools/codemap":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/consarray":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/csvparser":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/logreader":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/profile_view":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8/tools/splaytree":[">= 4.4 && < 5",">= 5.2 && < 12"],"v8":">= 1","node:v8":[">= 14.18 && < 15",">= 16"],"vm":true,"node:vm":[">= 14.18 && < 15",">= 16"],"wasi":">= 13.4 && < 13.5","worker_threads":">= 11.7","node:worker_threads":[">= 14.18 && < 15",">= 16"],"zlib":">= 0.5","node:zlib":[">= 14.18 && < 15",">= 16"]}');
 
 /***/ }),
 
@@ -14449,7 +14589,7 @@ module.exports = JSON.parse('["AGPL-1.0","AGPL-3.0","BSD-2-Clause-FreeBSD","BSD-
 /***/ ((module) => {
 
 "use strict";
-module.exports = JSON.parse('["0BSD","AAL","ADSL","AFL-1.1","AFL-1.2","AFL-2.0","AFL-2.1","AFL-3.0","AGPL-1.0-only","AGPL-1.0-or-later","AGPL-3.0-only","AGPL-3.0-or-later","AMDPLPA","AML","AMPAS","ANTLR-PD","ANTLR-PD-fallback","APAFML","APL-1.0","APSL-1.0","APSL-1.1","APSL-1.2","APSL-2.0","Abstyles","Adobe-2006","Adobe-Glyph","Afmparse","Aladdin","Apache-1.0","Apache-1.1","Apache-2.0","Artistic-1.0","Artistic-1.0-Perl","Artistic-1.0-cl8","Artistic-2.0","BSD-1-Clause","BSD-2-Clause","BSD-2-Clause-Patent","BSD-2-Clause-Views","BSD-3-Clause","BSD-3-Clause-Attribution","BSD-3-Clause-Clear","BSD-3-Clause-LBNL","BSD-3-Clause-No-Nuclear-License","BSD-3-Clause-No-Nuclear-License-2014","BSD-3-Clause-No-Nuclear-Warranty","BSD-3-Clause-Open-MPI","BSD-4-Clause","BSD-4-Clause-UC","BSD-Protection","BSD-Source-Code","BSL-1.0","BUSL-1.1","Bahyph","Barr","Beerware","BitTorrent-1.0","BitTorrent-1.1","BlueOak-1.0.0","Borceux","CAL-1.0","CAL-1.0-Combined-Work-Exception","CATOSL-1.1","CC-BY-1.0","CC-BY-2.0","CC-BY-2.5","CC-BY-3.0","CC-BY-3.0-AT","CC-BY-3.0-US","CC-BY-4.0","CC-BY-NC-1.0","CC-BY-NC-2.0","CC-BY-NC-2.5","CC-BY-NC-3.0","CC-BY-NC-4.0","CC-BY-NC-ND-1.0","CC-BY-NC-ND-2.0","CC-BY-NC-ND-2.5","CC-BY-NC-ND-3.0","CC-BY-NC-ND-3.0-IGO","CC-BY-NC-ND-4.0","CC-BY-NC-SA-1.0","CC-BY-NC-SA-2.0","CC-BY-NC-SA-2.5","CC-BY-NC-SA-3.0","CC-BY-NC-SA-4.0","CC-BY-ND-1.0","CC-BY-ND-2.0","CC-BY-ND-2.5","CC-BY-ND-3.0","CC-BY-ND-4.0","CC-BY-SA-1.0","CC-BY-SA-2.0","CC-BY-SA-2.0-UK","CC-BY-SA-2.5","CC-BY-SA-3.0","CC-BY-SA-3.0-AT","CC-BY-SA-4.0","CC-PDDC","CC0-1.0","CDDL-1.0","CDDL-1.1","CDLA-Permissive-1.0","CDLA-Sharing-1.0","CECILL-1.0","CECILL-1.1","CECILL-2.0","CECILL-2.1","CECILL-B","CECILL-C","CERN-OHL-1.1","CERN-OHL-1.2","CERN-OHL-P-2.0","CERN-OHL-S-2.0","CERN-OHL-W-2.0","CNRI-Jython","CNRI-Python","CNRI-Python-GPL-Compatible","CPAL-1.0","CPL-1.0","CPOL-1.02","CUA-OPL-1.0","Caldera","ClArtistic","Condor-1.1","Crossword","CrystalStacker","Cube","D-FSL-1.0","DOC","DSDP","Dotseqn","ECL-1.0","ECL-2.0","EFL-1.0","EFL-2.0","EPICS","EPL-1.0","EPL-2.0","EUDatagrid","EUPL-1.0","EUPL-1.1","EUPL-1.2","Entessa","ErlPL-1.1","Eurosym","FSFAP","FSFUL","FSFULLR","FTL","Fair","Frameworx-1.0","FreeImage","GFDL-1.1-invariants-only","GFDL-1.1-invariants-or-later","GFDL-1.1-no-invariants-only","GFDL-1.1-no-invariants-or-later","GFDL-1.1-only","GFDL-1.1-or-later","GFDL-1.2-invariants-only","GFDL-1.2-invariants-or-later","GFDL-1.2-no-invariants-only","GFDL-1.2-no-invariants-or-later","GFDL-1.2-only","GFDL-1.2-or-later","GFDL-1.3-invariants-only","GFDL-1.3-invariants-or-later","GFDL-1.3-no-invariants-only","GFDL-1.3-no-invariants-or-later","GFDL-1.3-only","GFDL-1.3-or-later","GL2PS","GLWTPL","GPL-1.0-only","GPL-1.0-or-later","GPL-2.0-only","GPL-2.0-or-later","GPL-3.0-only","GPL-3.0-or-later","Giftware","Glide","Glulxe","HPND","HPND-sell-variant","HTMLTIDY","HaskellReport","Hippocratic-2.1","IBM-pibs","ICU","IJG","IPA","IPL-1.0","ISC","ImageMagick","Imlib2","Info-ZIP","Intel","Intel-ACPI","Interbase-1.0","JPNIC","JSON","JasPer-2.0","LAL-1.2","LAL-1.3","LGPL-2.0-only","LGPL-2.0-or-later","LGPL-2.1-only","LGPL-2.1-or-later","LGPL-3.0-only","LGPL-3.0-or-later","LGPLLR","LPL-1.0","LPL-1.02","LPPL-1.0","LPPL-1.1","LPPL-1.2","LPPL-1.3a","LPPL-1.3c","Latex2e","Leptonica","LiLiQ-P-1.1","LiLiQ-R-1.1","LiLiQ-Rplus-1.1","Libpng","Linux-OpenIB","MIT","MIT-0","MIT-CMU","MIT-advertising","MIT-enna","MIT-feh","MIT-open-group","MITNFA","MPL-1.0","MPL-1.1","MPL-2.0","MPL-2.0-no-copyleft-exception","MS-PL","MS-RL","MTLL","MakeIndex","MirOS","Motosoto","MulanPSL-1.0","MulanPSL-2.0","Multics","Mup","NASA-1.3","NBPL-1.0","NCGL-UK-2.0","NCSA","NGPL","NIST-PD","NIST-PD-fallback","NLOD-1.0","NLPL","NOSL","NPL-1.0","NPL-1.1","NPOSL-3.0","NRL","NTP","NTP-0","Naumen","Net-SNMP","NetCDF","Newsletr","Nokia","Noweb","O-UDA-1.0","OCCT-PL","OCLC-2.0","ODC-By-1.0","ODbL-1.0","OFL-1.0","OFL-1.0-RFN","OFL-1.0-no-RFN","OFL-1.1","OFL-1.1-RFN","OFL-1.1-no-RFN","OGC-1.0","OGL-Canada-2.0","OGL-UK-1.0","OGL-UK-2.0","OGL-UK-3.0","OGTSL","OLDAP-1.1","OLDAP-1.2","OLDAP-1.3","OLDAP-1.4","OLDAP-2.0","OLDAP-2.0.1","OLDAP-2.1","OLDAP-2.2","OLDAP-2.2.1","OLDAP-2.2.2","OLDAP-2.3","OLDAP-2.4","OLDAP-2.5","OLDAP-2.6","OLDAP-2.7","OLDAP-2.8","OML","OPL-1.0","OSET-PL-2.1","OSL-1.0","OSL-1.1","OSL-2.0","OSL-2.1","OSL-3.0","OpenSSL","PDDL-1.0","PHP-3.0","PHP-3.01","PSF-2.0","Parity-6.0.0","Parity-7.0.0","Plexus","PolyForm-Noncommercial-1.0.0","PolyForm-Small-Business-1.0.0","PostgreSQL","Python-2.0","QPL-1.0","Qhull","RHeCos-1.1","RPL-1.1","RPL-1.5","RPSL-1.0","RSA-MD","RSCPL","Rdisc","Ruby","SAX-PD","SCEA","SGI-B-1.0","SGI-B-1.1","SGI-B-2.0","SHL-0.5","SHL-0.51","SISSL","SISSL-1.2","SMLNJ","SMPPL","SNIA","SPL-1.0","SSH-OpenSSH","SSH-short","SSPL-1.0","SWL","Saxpath","Sendmail","Sendmail-8.23","SimPL-2.0","Sleepycat","Spencer-86","Spencer-94","Spencer-99","SugarCRM-1.1.3","TAPR-OHL-1.0","TCL","TCP-wrappers","TMate","TORQUE-1.1","TOSL","TU-Berlin-1.0","TU-Berlin-2.0","UCL-1.0","UPL-1.0","Unicode-DFS-2015","Unicode-DFS-2016","Unicode-TOU","Unlicense","VOSTROM","VSL-1.0","Vim","W3C","W3C-19980720","W3C-20150513","WTFPL","Watcom-1.0","Wsuipa","X11","XFree86-1.1","XSkat","Xerox","Xnet","YPL-1.0","YPL-1.1","ZPL-1.1","ZPL-2.0","ZPL-2.1","Zed","Zend-2.0","Zimbra-1.3","Zimbra-1.4","Zlib","blessing","bzip2-1.0.5","bzip2-1.0.6","copyleft-next-0.3.0","copyleft-next-0.3.1","curl","diffmark","dvipdfm","eGenix","etalab-2.0","gSOAP-1.3b","gnuplot","iMatix","libpng-2.0","libselinux-1.0","libtiff","mpich2","psfrag","psutils","xinetd","xpp","zlib-acknowledgement"]');
+module.exports = JSON.parse('["0BSD","AAL","ADSL","AFL-1.1","AFL-1.2","AFL-2.0","AFL-2.1","AFL-3.0","AGPL-1.0-only","AGPL-1.0-or-later","AGPL-3.0-only","AGPL-3.0-or-later","AMDPLPA","AML","AMPAS","ANTLR-PD","ANTLR-PD-fallback","APAFML","APL-1.0","APSL-1.0","APSL-1.1","APSL-1.2","APSL-2.0","Abstyles","Adobe-2006","Adobe-Glyph","Afmparse","Aladdin","Apache-1.0","Apache-1.1","Apache-2.0","Artistic-1.0","Artistic-1.0-Perl","Artistic-1.0-cl8","Artistic-2.0","BSD-1-Clause","BSD-2-Clause","BSD-2-Clause-Patent","BSD-2-Clause-Views","BSD-3-Clause","BSD-3-Clause-Attribution","BSD-3-Clause-Clear","BSD-3-Clause-LBNL","BSD-3-Clause-Modification","BSD-3-Clause-No-Military-License","BSD-3-Clause-No-Nuclear-License","BSD-3-Clause-No-Nuclear-License-2014","BSD-3-Clause-No-Nuclear-Warranty","BSD-3-Clause-Open-MPI","BSD-4-Clause","BSD-4-Clause-Shortened","BSD-4-Clause-UC","BSD-Protection","BSD-Source-Code","BSL-1.0","BUSL-1.1","Bahyph","Barr","Beerware","BitTorrent-1.0","BitTorrent-1.1","BlueOak-1.0.0","Borceux","C-UDA-1.0","CAL-1.0","CAL-1.0-Combined-Work-Exception","CATOSL-1.1","CC-BY-1.0","CC-BY-2.0","CC-BY-2.5","CC-BY-2.5-AU","CC-BY-3.0","CC-BY-3.0-AT","CC-BY-3.0-DE","CC-BY-3.0-NL","CC-BY-3.0-US","CC-BY-4.0","CC-BY-NC-1.0","CC-BY-NC-2.0","CC-BY-NC-2.5","CC-BY-NC-3.0","CC-BY-NC-3.0-DE","CC-BY-NC-4.0","CC-BY-NC-ND-1.0","CC-BY-NC-ND-2.0","CC-BY-NC-ND-2.5","CC-BY-NC-ND-3.0","CC-BY-NC-ND-3.0-DE","CC-BY-NC-ND-3.0-IGO","CC-BY-NC-ND-4.0","CC-BY-NC-SA-1.0","CC-BY-NC-SA-2.0","CC-BY-NC-SA-2.0-FR","CC-BY-NC-SA-2.0-UK","CC-BY-NC-SA-2.5","CC-BY-NC-SA-3.0","CC-BY-NC-SA-3.0-DE","CC-BY-NC-SA-3.0-IGO","CC-BY-NC-SA-4.0","CC-BY-ND-1.0","CC-BY-ND-2.0","CC-BY-ND-2.5","CC-BY-ND-3.0","CC-BY-ND-3.0-DE","CC-BY-ND-4.0","CC-BY-SA-1.0","CC-BY-SA-2.0","CC-BY-SA-2.0-UK","CC-BY-SA-2.1-JP","CC-BY-SA-2.5","CC-BY-SA-3.0","CC-BY-SA-3.0-AT","CC-BY-SA-3.0-DE","CC-BY-SA-4.0","CC-PDDC","CC0-1.0","CDDL-1.0","CDDL-1.1","CDL-1.0","CDLA-Permissive-1.0","CDLA-Permissive-2.0","CDLA-Sharing-1.0","CECILL-1.0","CECILL-1.1","CECILL-2.0","CECILL-2.1","CECILL-B","CECILL-C","CERN-OHL-1.1","CERN-OHL-1.2","CERN-OHL-P-2.0","CERN-OHL-S-2.0","CERN-OHL-W-2.0","CNRI-Jython","CNRI-Python","CNRI-Python-GPL-Compatible","COIL-1.0","CPAL-1.0","CPL-1.0","CPOL-1.02","CUA-OPL-1.0","Caldera","ClArtistic","Community-Spec-1.0","Condor-1.1","Crossword","CrystalStacker","Cube","D-FSL-1.0","DOC","DRL-1.0","DSDP","Dotseqn","ECL-1.0","ECL-2.0","EFL-1.0","EFL-2.0","EPICS","EPL-1.0","EPL-2.0","EUDatagrid","EUPL-1.0","EUPL-1.1","EUPL-1.2","Entessa","ErlPL-1.1","Eurosym","FDK-AAC","FSFAP","FSFUL","FSFULLR","FTL","Fair","Frameworx-1.0","FreeBSD-DOC","FreeImage","GD","GFDL-1.1-invariants-only","GFDL-1.1-invariants-or-later","GFDL-1.1-no-invariants-only","GFDL-1.1-no-invariants-or-later","GFDL-1.1-only","GFDL-1.1-or-later","GFDL-1.2-invariants-only","GFDL-1.2-invariants-or-later","GFDL-1.2-no-invariants-only","GFDL-1.2-no-invariants-or-later","GFDL-1.2-only","GFDL-1.2-or-later","GFDL-1.3-invariants-only","GFDL-1.3-invariants-or-later","GFDL-1.3-no-invariants-only","GFDL-1.3-no-invariants-or-later","GFDL-1.3-only","GFDL-1.3-or-later","GL2PS","GLWTPL","GPL-1.0-only","GPL-1.0-or-later","GPL-2.0-only","GPL-2.0-or-later","GPL-3.0-only","GPL-3.0-or-later","Giftware","Glide","Glulxe","HPND","HPND-sell-variant","HTMLTIDY","HaskellReport","Hippocratic-2.1","IBM-pibs","ICU","IJG","IPA","IPL-1.0","ISC","ImageMagick","Imlib2","Info-ZIP","Intel","Intel-ACPI","Interbase-1.0","JPNIC","JSON","JasPer-2.0","LAL-1.2","LAL-1.3","LGPL-2.0-only","LGPL-2.0-or-later","LGPL-2.1-only","LGPL-2.1-or-later","LGPL-3.0-only","LGPL-3.0-or-later","LGPLLR","LPL-1.0","LPL-1.02","LPPL-1.0","LPPL-1.1","LPPL-1.2","LPPL-1.3a","LPPL-1.3c","Latex2e","Leptonica","LiLiQ-P-1.1","LiLiQ-R-1.1","LiLiQ-Rplus-1.1","Libpng","Linux-OpenIB","Linux-man-pages-copyleft","MIT","MIT-0","MIT-CMU","MIT-Modern-Variant","MIT-advertising","MIT-enna","MIT-feh","MIT-open-group","MITNFA","MPL-1.0","MPL-1.1","MPL-2.0","MPL-2.0-no-copyleft-exception","MS-PL","MS-RL","MTLL","MakeIndex","MirOS","Motosoto","MulanPSL-1.0","MulanPSL-2.0","Multics","Mup","NAIST-2003","NASA-1.3","NBPL-1.0","NCGL-UK-2.0","NCSA","NGPL","NIST-PD","NIST-PD-fallback","NLOD-1.0","NLOD-2.0","NLPL","NOSL","NPL-1.0","NPL-1.1","NPOSL-3.0","NRL","NTP","NTP-0","Naumen","Net-SNMP","NetCDF","Newsletr","Nokia","Noweb","O-UDA-1.0","OCCT-PL","OCLC-2.0","ODC-By-1.0","ODbL-1.0","OFL-1.0","OFL-1.0-RFN","OFL-1.0-no-RFN","OFL-1.1","OFL-1.1-RFN","OFL-1.1-no-RFN","OGC-1.0","OGDL-Taiwan-1.0","OGL-Canada-2.0","OGL-UK-1.0","OGL-UK-2.0","OGL-UK-3.0","OGTSL","OLDAP-1.1","OLDAP-1.2","OLDAP-1.3","OLDAP-1.4","OLDAP-2.0","OLDAP-2.0.1","OLDAP-2.1","OLDAP-2.2","OLDAP-2.2.1","OLDAP-2.2.2","OLDAP-2.3","OLDAP-2.4","OLDAP-2.5","OLDAP-2.6","OLDAP-2.7","OLDAP-2.8","OML","OPL-1.0","OPUBL-1.0","OSET-PL-2.1","OSL-1.0","OSL-1.1","OSL-2.0","OSL-2.1","OSL-3.0","OpenSSL","PDDL-1.0","PHP-3.0","PHP-3.01","PSF-2.0","Parity-6.0.0","Parity-7.0.0","Plexus","PolyForm-Noncommercial-1.0.0","PolyForm-Small-Business-1.0.0","PostgreSQL","Python-2.0","QPL-1.0","Qhull","RHeCos-1.1","RPL-1.1","RPL-1.5","RPSL-1.0","RSA-MD","RSCPL","Rdisc","Ruby","SAX-PD","SCEA","SGI-B-1.0","SGI-B-1.1","SGI-B-2.0","SHL-0.5","SHL-0.51","SISSL","SISSL-1.2","SMLNJ","SMPPL","SNIA","SPL-1.0","SSH-OpenSSH","SSH-short","SSPL-1.0","SWL","Saxpath","Sendmail","Sendmail-8.23","SimPL-2.0","Sleepycat","Spencer-86","Spencer-94","Spencer-99","SugarCRM-1.1.3","TAPR-OHL-1.0","TCL","TCP-wrappers","TMate","TORQUE-1.1","TOSL","TU-Berlin-1.0","TU-Berlin-2.0","UCL-1.0","UPL-1.0","Unicode-DFS-2015","Unicode-DFS-2016","Unicode-TOU","Unlicense","VOSTROM","VSL-1.0","Vim","W3C","W3C-19980720","W3C-20150513","WTFPL","Watcom-1.0","Wsuipa","X11","XFree86-1.1","XSkat","Xerox","Xnet","YPL-1.0","YPL-1.1","ZPL-1.1","ZPL-2.0","ZPL-2.1","Zed","Zend-2.0","Zimbra-1.3","Zimbra-1.4","Zlib","blessing","bzip2-1.0.5","bzip2-1.0.6","copyleft-next-0.3.0","copyleft-next-0.3.1","curl","diffmark","dvipdfm","eGenix","etalab-2.0","gSOAP-1.3b","gnuplot","iMatix","libpng-2.0","libselinux-1.0","libtiff","mpich2","psfrag","psutils","xinetd","xpp","zlib-acknowledgement"]');
 
 /***/ }),
 
