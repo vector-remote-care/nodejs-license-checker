@@ -7558,7 +7558,7 @@ exports.init = function(options, callback) {
         var failOnCheckFailItems = [];
         Object.keys(restricted).forEach((item) => {
             if(toCheckforFailOn.length > 0) {
-                if(toCheckforFailOn.find(license => {return restricted[item].licenses.includes(license);})) {
+                if(toCheckforFailOn.find(license => {return restricted[item].licenses.startsWith(license);})) {
                     failOnCheckFailItems.push(item);
                     console.error('Found license defined by the --failOn flag: "' + restricted[item].licenses + '". Exiting.');
                     process.exit(1);
@@ -14741,7 +14741,7 @@ var __webpack_exports__ = {};
 // This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
 (() => {
 const core = __nccwpck_require__(2186)
-const licenseChecker = __nccwpck_require__(5840)
+const licenseChecker = __nccwpck_require__(5840);
 
 const getMultilineInput = (name) => core.getInput(name).split('\n');
 
